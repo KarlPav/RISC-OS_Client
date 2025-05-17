@@ -7,8 +7,9 @@
             "cppStandard": "gnu++98",
             "intelliSenseMode": "gcc-arm",
             "includePath": [
-                "${workspaceFolder}/**",
+                "${workspaceFolder}",
                 "${workspaceFolder}/h/**",
+                "${workspaceFolder}/**",
                 "/home/piOS/gccsdk/env/include"
             ],
             "defines": [

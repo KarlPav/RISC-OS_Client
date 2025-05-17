@@ -1,97 +1,118 @@
-# Setup RISCOS GCC environment
-TARGET_ENV = . ~/gccsdk/env/ro-path
+# Output control
+Q := @
+ECHO := @echo
 
-# Compiler and linker
-CC := gcc
-LD := gcc
+# Cross-compilation setup
+GCCSDK_ROOT := $(HOME)/gccsdk
+GCCSDK_CROSS := $(GCCSDK_ROOT)/cross/bin
 
-# Setup some standard compiler flags.
-#RISCOS flags:
-# -mpoke-function-name enables function names to exist in the object file (poke function name)
-# -mthrowback is used to enable throwback error reporting
-# -mlibscl is used to link against the SCLib library (Shared C Library) - Creates a RISCOS executable (AIF Type)
+# Default to native build
+TARGET_OS ?= native
 
-#ARM flags:
-# -mhard-float is used to enable hardware floating point support
-# -mfloat-abi=hard is used to specify the floating point ABI (Application Binary Interface)
-# -mfpu= sets which floating point unit to use. If using libscl, hardfp options are fpa only, soft options are neon or vfp
+# Target-specific variables
+ifeq ($(TARGET_OS),riscos)
+    # RISC OS Toolchain
+    CC := $(GCCSDK_CROSS)/arm-unknown-riscos-gcc
+    LD := $(CC)
+    OUTPUT_BINARY := !RunImageELF
+    FINAL_BINARY := !RunImage
+    CCFLAGS := -std=gnu99 -mlibscl -mhard-float -mthrowback -Wall -O2 \
+               -fno-strict-aliasing -mpoke-function-name -D__riscos__
+    LDFLAGS := -L$(GCCSDK_ROOT)/env/lib -lOSLibH32 -lSFLib32
+else
+    # Native POSIX build
+    CC := gcc
+    LD := gcc
+    OUTPUT_BINARY := client
+    FINAL_BINARY := $(OUTPUT_BINARY)
+    CCFLAGS := -std=gnu99 -Wall -O2
+    LDFLAGS :=
+endif
 
-#UnixLib flags:
-# -lunixlib is used to link against the UnixLib library - Creates a UnixLib executable (ELF Type)
+# Directories
+SRCDIR := c
+HDRDIR := h
+OBJDIR := o
+PLATFORMDIR := $(if $(filter riscos,$(TARGET_OS)),riscos,posix)
 
-#GCC flags:
-# -Wall enables all compiler warnings
-# -O2 enables optimization level 2
-# -fno-strict-aliasing disables strict aliasing optimizations (Allows more flexible casting)
-# -static links the executable statically
-# -dynamic enables dynamic linking (opposite of static)
-# -std=gnu99 enables GNU99 standard for C
+# Source files
+# SRCS := $(wildcard $(SRCDIR)/*.c)
+# OBJS := $(patsubst $(SRCDIR)/%.c,$(OBJDIR)/%.o,$(SRCS)) \
+#         $(OBJDIR)/socket_impl.o
 
-CCFLAGS += -std=gnu99 -mlibscl -mhard-float -mthrowback -Wall -O2 -fno-strict-aliasing -mpoke-function-name -static
-#CXXFLAGS += -Wall -O2 #-mfloat-abi=hard #-static
-LDFLAGS +=
+# Explicit list of main source files (excluding platform-specific ones)
+MAIN_SRCS := $(filter-out $(SRCDIR)/socket_utils_wrapper.c, $(wildcard $(SRCDIR)/*.c))
 
-# Set target
-# TARGET := !RunImage
-TARGET := !RunImageELF
-AIF := !RunImage
+# Platform-specific implementation
+PLATFORM_IMPL := $(PLATFORMDIR)/socket_utils_$(if $(filter riscos,$(TARGET_OS)),riscos,posix).c
 
-# Relative paths to our source, header and object file directories.
-SRCDIR := $(CURDIR)/c
-HDRDIR := $(CURDIR)/h
-OBJDIR := $(CURDIR)/o
+# Object files
+OBJS := $(patsubst $(SRCDIR)/%.c,$(OBJDIR)/%.o,$(MAIN_SRCS)) \
+        $(OBJDIR)/socket_utils_wrapper.o \
+        $(OBJDIR)/socket_utils_$(if $(filter riscos,$(TARGET_OS)),riscos,posix).o
 
-# The C++ Headers and libraries live here.
-INCLUDES := -I$(GCCSDK_INSTALL_ENV)/include -I$(HDRDIR)
-LINKS := -L$(GCCSDK_INSTALL_ENV)/lib -lOSLibH32 -lSFLib32 -lunixlib
 
-# Ensure the directory exists
-$(shell mkdir -p $(SRCDIR))
-$(shell mkdir -p $(HDRDIR))
+# Include paths
+INCLUDES := -I. -I$(HDRDIR) -I$(PLATFORMDIR)
+
+# Ensure directories exist
 $(shell mkdir -p $(OBJDIR))
 
-# List of source files and corresponding object files and the target
-SRCS := $(wildcard $(SRCDIR)/*.c)
-OBJS := $(patsubst $(SRCDIR)/%.c, $(OBJDIR)/%.o, $(SRCS))
+.PHONY: all clean riscos native
 
-# Debugging: Print the source and object files
-$(info Source files: $(SRCS))
-$(info Object files: $(OBJS))
+all: $(TARGET_OS)
 
-# Phony targets
-.PHONY: all clean
+riscos:
+	@$(MAKE) TARGET_OS=riscos all_target
 
-# Default target
-# all: $(TARGET)
-all: $(AIF)
+native:
+	@$(MAKE) TARGET_OS=native all_target
 
-# Compile the C++ sources into ELF object files.
+all_target: $(FINAL_BINARY)
+
+# NEW RULE: Link object files into OUTPUT_BINARY
+$(OUTPUT_BINARY): $(OBJS)
+	@echo "Linking $(OUTPUT_BINARY) from:" $(OBJS)
+	$(LD) $(CCFLAGS) $(LDFLAGS) -o $@ $(OBJS)
+
+# Existing conversion rule
+$(FINAL_BINARY): $(OUTPUT_BINARY)
+ifeq ($(TARGET_OS),riscos)
+	$(GCCSDK_CROSS)/elf2aif $(OUTPUT_BINARY) $(FINAL_BINARY) 2> aif_error.log || \
+	(if grep -q "'$(OUTPUT_BINARY)' is not an ELF file" aif_error.log; then \
+		mv -f $(OUTPUT_BINARY) $(FINAL_BINARY); \
+	else cat aif_error.log; false; fi)
+else
+	@echo "Native build complete"
+endif
+
+# Compilation rules
 $(OBJDIR)/%.o: $(SRCDIR)/%.c
-	@$(TARGET_ENV) && $(CC) -c $(CCFLAGS) $(INCLUDES) $< -o $@
+	$(Q)$(CC) -c $(CCFLAGS) $(INCLUDES) $< -o $@
+	$(ECHO) "Compiled: $< -> $@"
 
-# Link the ELF object files into an RISCOS ELF executable.
-$(TARGET): $(OBJS)
-	@$(TARGET_ENV) && $(CC) $(CCFLAGS) $(LINKS) $(LDFLAGS) -o $(TARGET) $(OBJS)
+$(OBJDIR)/socket_utils_wrapper.o: c/socket_utils_wrapper.c
+	$(Q)$(CC) -c $(CCFLAGS) $(INCLUDES) $< -o $@
+	$(ECHO) "Compiled: $< -> $@"
 
-# # Convert ELF to AIF - Must use -static
-# $(AIF): $(TARGET)
-# 	/home/piOS/gccsdk/cross/bin/elf2aif $(TARGET) $(AIF)
-# 	rm -f $(TARGET)
+$(OBJDIR)/socket_utils_riscos.o: riscos/socket_utils_riscos.c
+	$(Q)$(CC) -c $(CCFLAGS) $(INCLUDES) -D__riscos__ $< -o $@
+	$(ECHO) "Compiled: $< -> $@"
 
-# Convert ELF to AIF - Must use -static
-$(AIF): $(TARGET)
-	@echo "Converting ELF to AIF..."
-	@/home/piOS/gccsdk/cross/bin/elf2aif $(TARGET) $(AIF) 2> aif_error.log || \
-	( \
-		if grep -q "'$(TARGET)' is not an ELF file" aif_error.log; then \
-			echo "$(TARGET) is already an AIF binary � renaming to $(AIF)"; \
-			mv -f $(TARGET) $(AIF); \
-		else \
-			cat aif_error.log; \
-			false; \
-		fi \
-	)
+$(OUTPUT_BINARY): $(OBJS)
+	$(ECHO) "Linking: $(OUTPUT_BINARY)"
+	$(Q)$(LD) $(CCFLAGS) $(LDFLAGS) -o $@ $(OBJS)
 
-# Clean the build directory
+$(FINAL_BINARY): $(OUTPUT_BINARY)
+ifeq ($(TARGET_OS),riscos)
+	$(ECHO) "Converting to AIF..."
+	$(Q)$(GCCSDK_CROSS)/elf2aif $(OUTPUT_BINARY) $(FINAL_BINARY) 2> aif_error.log || \
+	(if grep -q "'$(OUTPUT_BINARY)' is not an ELF file" aif_error.log; then \
+		mv -f $(OUTPUT_BINARY) $(FINAL_BINARY); \
+	else cat aif_error.log; false; fi)
+else
+	$(ECHO) "Build complete: $(FINAL_BINARY)"
+endif
+
 clean:
-	@$(TARGET_ENV) && rm -f $(OBJDIR)/*.o $(TARGET)
+	rm -rf $(OBJDIR)/*.o $(OUTPUT_BINARY) $(FINAL_BINARY) aif_error.log
