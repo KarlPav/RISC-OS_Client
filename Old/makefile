@@ -25,7 +25,7 @@ else
     LD := gcc
     OUTPUT_BINARY := client  # Temporary intermediate file
     FINAL_BINARY :=
-    CCFLAGS := -std=gnu99 -Wall -O2 -U__riscos__ -DPLATFORM_POSIX=1
+    CCFLAGS := -std=gnu99 -Wall -O2
     LDFLAGS :=
 endif
 

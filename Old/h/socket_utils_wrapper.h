@@ -1,6 +1,6 @@
 
-#ifndef SOCKET_UTILS_WRAPPER_H
-#define SOCKET_UTILS_WRAPPER_H
+#ifndef SOCKET_UTILS_H
+#define SOCKET_UTILS_H
 
 // Public declaration only
 int set_nonblocking(int sockfd);
