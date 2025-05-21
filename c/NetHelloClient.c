@@ -5,12 +5,10 @@ code in /portable contains standard POSIX code (Linux) /riscos contains RISC OS 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <swis.h>
 #include <sys/socket.h>
 #include <netinet/in.h> // Contains sockaddr_in definition
-// #include <arpa/inet.h>   // For inet_addr()
-#include <unistd.h> // For close()
-#include <netdb.h>  // For gethostbyname()
+#include <unistd.h>     // For close()
+#include <netdb.h>      // For gethostbyname()
 #include <errno.h>
 #include <sys/ioctl.h>
 #include "socket_utils_wrapper.h" // For set_nonblocking()
@@ -25,7 +23,7 @@ int main(int argc, char *argv[])
     int sock;
     struct sockaddr_in server_addr;
     char buffer[BUFFER_SIZE];
-    // int bytes_received;
+    int bytes_received;
     struct hostent *server;
 
     if (argc != 2)
@@ -39,14 +37,6 @@ int main(int argc, char *argv[])
     if (sock < 0)
     {
         perror("socket() failed");
-        return 1;
-    }
-
-    /*Set socket to non-blocking mode - this gets the right code depending on the OS selected (where?) */
-    if (set_nonblocking(sock) == -1)
-    {
-        perror("Failed to set non-blocking");
-        close(sock);
         return 1;
     }
 
@@ -82,106 +72,44 @@ int main(int argc, char *argv[])
 
     printf("Connected to server\n");
 
-    /* Receive data */
-    // bytes_received = recv(sock, buffer, BUFFER_SIZE - 1, 0);
-    // if (bytes_received < 0)
-    // {
-    //     perror("recv");
-    // }
-    // else
-    // {
-    //     buffer[bytes_received] = '\0';
-    //     printf("Received: %s", buffer);
-    // }
+    /*Set socket to non-blocking mode - this gets the right code depending on the OS selected (where?) */
+    if (set_nonblocking(sock) == -1)
+    {
+        perror("Failed to set socket as non-blocking");
+        close(sock);
+        return 1;
+    }
 
     // Chat loop
-    // while (1)
-    // {
-    //     /* Check for Backslash key */
-    //     if (_kernel_osbyte(129, 0, 0) == 92)
-    //     {
-    //         printf("Escape pressed, shutting down...\n");
-    //         break;
-    //     }
-
-    //     printf("> ");
-    //     fgets(buffer, sizeof(buffer), stdin);
-
-    //     if (send(sock, buffer, strlen(buffer), 0) < 0)
-    //     {
-    //         perror("Send() failed");
-    //         break;
-    //     }
-
-    //     int bytes_received = recv(sock, buffer, sizeof(buffer) - 1, 0);
-    //     if (bytes_received <= 0)
-    //     {
-    //         perror("Server disconnected");
-    //         break;
-    //     }
-
-    //     buffer[bytes_received] = '\0';
-    //     printf("Server replied: %s", buffer);
-    // }
-
-    /* Chat loop */
     while (1)
     {
-        /* Check for Backslash key (non-blocking) */
-        char ch;
-        if (read(STDIN_FILENO, &ch, 1) > 0 && ch == '\\')
+        printf("Enter message (or '\\' to disconnect): ");
+
+        printf("> ");
+        fgets(buffer, sizeof(buffer), stdin);
+
+        /* Check for Backslash key */
+        if (buffer[0] == '\\')
         {
-            printf("\nDisconnecting...\n");
+            printf("Shutting down...\n");
             break;
         }
 
-        /* Check for user input */
-        fd_set readfds;
-        FD_ZERO(&readfds);
-        FD_SET(STDIN_FILENO, &readfds);
-        FD_SET(sock, &readfds);
-
-        struct timeval tv = {0, 100000}; // 100ms timeout
-        int activity = select(sock + 1, &readfds, NULL, NULL, &tv);
-
-        if (activity < 0)
+        if (send(sock, buffer, strlen(buffer), 0) < 0)
         {
-            perror("select error");
+            perror("Send() failed");
             break;
         }
 
-        /* Handle server messages */
-        if (FD_ISSET(sock, &readfds))
-        {
-            int bytes_received = recv(sock, buffer, sizeof(buffer) - 1, 0);
-            if (bytes_received <= 0)
-            {
-                if (bytes_received == 0)
-                {
-                    printf("Server disconnected\n");
-                }
-                else if (errno != EAGAIN && errno != EWOULDBLOCK)
-                {
-                    perror("recv error");
-                }
-                break;
-            }
-            buffer[bytes_received] = '\0';
-            printf("Server: %s", buffer);
-        }
+        // int bytes_received = recv(sock, buffer, sizeof(buffer) - 1, 0);
+        // if (bytes_received <= 0)
+        // {
+        //     perror("Server disconnected");
+        //     break;
+        // }
 
-        /* Handle user input */
-        if (FD_ISSET(STDIN_FILENO, &readfds))
-        {
-            if (fgets(buffer, sizeof(buffer), stdin) != NULL)
-            {
-                if (send(sock, buffer, strlen(buffer), 0) < 0)
-                {
-                    perror("send error");
-                    break;
-                }
-            }
-        }
+        // buffer[bytes_received] = '\0';
+        // printf("Server replied: %s", buffer);
     }
 
     /* Close connection */

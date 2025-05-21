@@ -1,3 +1,8 @@
+# Use
+# "make" will build the native version (POSIX)
+# "make riscos" will build the RISC OS version - Need to check if the env needs setup seems no?
+# "make clean" will remove all object files and binaries
+
 # Output control
 Q := @
 ECHO := @echo
