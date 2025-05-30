@@ -26,6 +26,13 @@ int main(int argc, char *argv[])
     int bytes_received;
     struct hostent *server;
 
+    int x = gen_func(); // Call the generic function to demonstrate platform-specific functionality
+    if (x == 0)
+    {
+        printf("gen_func() executed successfully\n");
+        // return 1;
+    }
+
     if (argc != 2)
     {
         printf("Usage: %s <server_ip>\n", argv[0]);
@@ -36,7 +43,7 @@ int main(int argc, char *argv[])
     sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0)
     {
-        perror("socket() failed");
+        perror("socket() failed\n");
         return 1;
     }
 
@@ -72,20 +79,27 @@ int main(int argc, char *argv[])
 
     printf("Connected to server\n");
 
-    /*Set socket to non-blocking mode - this gets the right code depending on the OS selected (where?) */
-    if (set_nonblocking(sock) == -1)
-    {
-        perror("Failed to set socket as non-blocking");
-        close(sock);
-        return 1;
-    }
+    // /*Set socket to non-blocking mode - this gets the right code depending on the OS selected (where?) */
+    // if (set_nonblocking(sock) == -1)
+    // {
+    //     perror("Failed to set socket as non-blocking\n");
+    //     close(sock);
+    //     return 1;
+    // }
+
+    printf("Enter message (or '\\' to disconnect): \n");
 
     // Chat loop
     while (1)
     {
-        printf("Enter message (or '\\' to disconnect): ");
 
         printf("> ");
+
+        // if (FD_ISSET(STDIN_FILENO, &readfds))
+        // {
+        //     printf("Data available from stdin\n");
+        // }
+
         fgets(buffer, sizeof(buffer), stdin);
 
         /* Check for Backslash key */
@@ -97,19 +111,56 @@ int main(int argc, char *argv[])
 
         if (send(sock, buffer, strlen(buffer), 0) < 0)
         {
-            perror("Send() failed");
+            perror("Send() failed\n");
             break;
         }
 
-        // int bytes_received = recv(sock, buffer, sizeof(buffer) - 1, 0);
-        // if (bytes_received <= 0)
-        // {
-        //     perror("Server disconnected");
-        //     break;
-        // }
+        fd_set readfds;
+        FD_ZERO(&readfds);
+        //FD_SET(STDIN_FILENO, &readfds);
+        FD_SET(sock, &readfds);
 
-        // buffer[bytes_received] = '\0';
-        // printf("Server replied: %s", buffer);
+        struct timeval tv = {2, 0};
+        int activity = select(sock + 1, &readfds, NULL, NULL, &tv);
+        if (activity > 0)
+        {
+            printf("select() returned with data available\n");
+        }
+        else if (activity < 0)
+        {
+            perror("select() failed\n");
+            break;
+        }
+        else if (activity == 0)
+        {
+            printf("select() returned with no data available\n");
+        }
+
+        if (FD_ISSET(sock, &readfds))
+        {
+            bytes_received = recv(sock, buffer, sizeof(buffer) - 1, 0);
+
+            if (bytes_received == -1 && errno != EAGAIN)
+            {
+                perror("Server disconnected\n");
+                break;
+            }
+            else if (bytes_received == 0)
+            {
+                printf("Server closed the connection\n");
+                break;
+            }
+
+            if (bytes_received > 0)
+            {
+                // Print the received message
+                buffer[bytes_received] = '\0';
+                printf("Server replied: %s\n", buffer);
+            }
+        }
+
+            printf("select() returned %d (stdin:%ld sock:%ld)\n", activity, FD_ISSET(STDIN_FILENO, &readfds), FD_ISSET(sock, &readfds));
+
     }
 
     /* Close connection */

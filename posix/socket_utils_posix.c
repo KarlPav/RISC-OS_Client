@@ -10,3 +10,10 @@ int set_nonblocking_posix(int sockfd)
         return -1;
     return fcntl(sockfd, F_SETFL, flags | O_NONBLOCK);
 }
+
+int gen_func_posix()
+{
+    // This function is a placeholder for any POSIX-specific functionality.
+    // It can be replaced with actual implementation as needed.
+    return 0; // Return 0 to indicate success
+}

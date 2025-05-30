@@ -4,7 +4,7 @@
       {
         "label": "Build with Make",
         "type": "shell",
-        "command": "make",  // Your Make command
+        "command": "make clean riscos",  // Your Make command
         "group": {
           "kind": "build",
           "isDefault": true

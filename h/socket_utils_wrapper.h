@@ -4,5 +4,6 @@
 
 // Public declaration only
 int set_nonblocking(int sockfd);
+int gen_func(void);
 
 #endif

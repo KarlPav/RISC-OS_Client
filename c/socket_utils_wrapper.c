@@ -17,3 +17,13 @@ int set_nonblocking(int sockfd)
     return set_nonblocking_posix(sockfd);
 #endif
 }
+
+// General function implementation that delegates to platform-specific function
+int gen_func()
+{
+#ifdef __riscos__
+    return gen_func_riscos();
+#else
+    return gen_func_posix();
+#endif
+}
